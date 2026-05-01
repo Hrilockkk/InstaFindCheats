@@ -4,33 +4,81 @@ param([string]$RootPath = $null)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+function Get-RipgrepPath {
+  $rgPaths = @(
+    "$env:LOCALAPPDATA\Programs\ripgrep\rg.exe",
+    "$env:ProgramFiles\ripgrep\rg.exe",
+    "$env:ProgramFiles(x86)\ripgrep\rg.exe",
+    "$env:USERPROFILE\.cargo\bin\rg.exe"
+  )
+  
+  foreach ($p in $rgPaths) {
+    if (Test-Path $p) { return $p }
+  }
+  
+  $rg = Get-Command rg -ErrorAction SilentlyContinue
+  if ($rg) { return $rg.Source }
+  
+  return $null
+}
+
 function Install-Ripgrep {
-  $rgPath = Get-Command rg -ErrorAction SilentlyContinue
-  if ($rgPath) { return $true }
+  $rg = Get-RipgrepPath
+  if ($rg) { return $true }
   
   Write-Host "Installing Ripgrep..." -ForegroundColor Yellow
   
-  $temp = [System.IO.Path]::GetTempFileName() + ".zip"
+  $tempZip = [System.IO.Path]::GetTempFileName() + ".zip"
+  $installDir = "$env:LOCALAPPDATA\Programs\ripgrep"
   
-  if ($IsWindows) {
+  try {
     $url = "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-pc-windows-msvc.zip"
-    Invoke-WebRequest -Uri $url -OutFile $temp -UseBasicParsing
-    Expand-Archive -Path $temp -DestinationPath "$env:TEMP\rg" -Force
     
-    $rgExe = "$env:TEMP\rg\ripgrep-14.1.0-x86_64-pc-windows-msvc\rg.exe"
-    if (Test-Path $rgExe) {
-      Copy-Item $rgExe -Destination "$env:LOCALAPPDATA\Programs\ripgrep\rg.exe" -Force
-      $env:PATH = "$env:LOCALAPPDATA\Programs\ripgrep;$env:PATH"
-      Remove-Item $temp -Force -ErrorAction SilentlyContinue
-      Remove-Item "$env:TEMP\rg" -Recurse -Force -ErrorAction SilentlyContinue
+    $webClient = New-Object System.Net.WebClient
+    $webClient.DownloadFile($url, $tempZip)
+    
+    if (-not (Test-Path $installDir)) {
+      New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+    
+    Expand-Archive -Path $tempZip -DestinationPath $installDir -Force
+    
+    $extractedRg = Get-ChildItem -Path $installDir -Filter "rg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    
+    if ($extractedRg) {
+      Copy-Item $extractedRg.FullName -Destination "$installDir\rg.exe" -Force
+      
+      $env:PATH = "$installDir;$env:PATH"
+      [System.Environment]::SetEnvironmentVariable("PATH", "$installDir;$env:PATH", "User")
+      
+      Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+      
+      $subfolders = Get-ChildItem -Path $installDir -Directory
+      foreach ($sf in $subfolders) {
+        Remove-Item $sf.FullName -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      
       return $true
     }
+  } catch {
+    Write-Host "Download error: $_" -ForegroundColor Red
   }
+  
   return $false
 }
 
 if (-not (Install-Ripgrep)) {
-  Write-Host "Ripgrep install failed. Run: winget install BurntSushi.ripgrep" -ForegroundColor Red
+  Write-Host "`nFailed to install Ripgrep automatically." -ForegroundColor Red
+  Write-Host "Please install manually:" -ForegroundColor Yellow
+  Write-Host "  1. Open PowerShell as Admin" -ForegroundColor White
+  Write-Host "  2. Run: winget install BurntSushi.ripgrep" -ForegroundColor White
+  Write-Host "  3. Restart PowerShell and run this script again" -ForegroundColor White
+  exit 1
+}
+
+$rgExe = Get-RipgrepPath
+if (-not $rgExe) {
+  Write-Host "Ripgrep not found after install!" -ForegroundColor Red
   exit 1
 }
 
@@ -55,7 +103,7 @@ $Rules = @(
   @{ MinBytes = 3MB;  MaxBytes = 7MB; Pattern = 'Wzo8f9:GPd_C\[' }
 )
 
-Write-Host "=== RIPGREP SCAN ===" -ForegroundColor Yellow
+Write-Host "`n=== InstaFindCheats ===" -ForegroundColor Green
 
 $userProfile = $env:USERPROFILE
 
@@ -73,7 +121,7 @@ foreach ($path in $paths) {
   Write-Host "Scan: $path" -ForegroundColor Cyan
   
   foreach ($rule in $Rules) {
-    $output = rg -l --binary --max-count 1 -j 8 $rule.Pattern $path 2>$null
+    $output = & $rgExe -l --binary --max-count 1 -j 8 $rule.Pattern $path 2>$null
     
     foreach ($file in $output) {
       if (-not (Test-Path $file)) { continue }
@@ -95,7 +143,7 @@ foreach ($path in $paths) {
   }
 }
 
-if ($results.Count -eq 0) { Write-Host "No matches!" -ForegroundColor Yellow }
+if ($results.Count -eq 0) { Write-Host "`nNo matches!" -ForegroundColor Yellow }
 else {
   $results = $results | Sort-Object Path -Unique
   Write-Host "`n=== $($results.Count) FOUND ===" -ForegroundColor Green
