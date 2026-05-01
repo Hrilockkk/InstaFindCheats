@@ -13,7 +13,6 @@ foreach ($p in @("$env:LOCALAPPDATA\Programs\ripgrep\rg.exe", "$env:ProgramFiles
 if (-not $rgExe) { $rg = Get-Command rg -EA SilentlyContinue; if ($rg) { $rgExe = $rg.Source } }
 
 if (-not $rgExe) {
-    Write-Host "Installing rg..." -ForegroundColor Yellow
     try {
         $tempZip = "$env:TEMP\rg.zip"; $installDir = "$env:LOCALAPPDATA\Programs\ripgrep"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -42,10 +41,10 @@ $Rules = @(
     @{ MinSize=15MB; MaxSize=24MB;  Pattern='MIDNIGHTLoader' },
     @{ MinSize=10MB; MaxSize=16MB;  Pattern='&Lp6U&XM\}3ZQ\*\^\[Hp\)' },
     @{ MinSize=2MB;  MaxSize=8MB;   Pattern='j_M6:F' },
-    @{ MinSize=100KB; MaxSize=400KB; Pattern='swiftsoft'; Encoding='UTF-16' },
+    @{ MinSize=100KB; MaxSize=400KB; Pattern='swiftsoft' },
     @{ MinSize=20MB; MaxSize=24MB;  Pattern='exloader' },
     @{ MinSize=13MB; MaxSize=23MB;  Pattern='ZI>vZ@y#O%~' },
-    @{ MinSize=200KB; MaxSize=400KB; Pattern='com.mvploader'; Encoding='UTF-16' },
+    @{ MinSize=200KB; MaxSize=400KB; Pattern='com.mvploader' },
     @{ MinSize=3MB;  MaxSize=7MB;   Pattern='Wzo8f9:GPd_C\[' }
 )
 
@@ -67,15 +66,14 @@ foreach ($path in $paths) {
     Write-Host "Scan: $path" -ForegroundColor Cyan
     
     foreach ($rule in $Rules) {
-        $minMB = [int]($rule.MinSize / 1MB)
-        $maxMB = [int]($rule.MaxSize / 1MB)
+        Write-Host "  Searching: $($rule.Pattern)" -ForegroundColor Gray
         
-        Write-Host "  Rule: $minMB-$maxMB MB | $($rule.Pattern.Substring(0, [Math]::Min(15, $rule.Pattern.Length)))..." -ForegroundColor Gray
-        
-        $output = & $rgExe -l --binary --size "${minMB}-${maxMB}M" $rule.Pattern $path 2>$null | Where-Object { $_ -match '\.exe$' }
+        $output = & $rgExe -l --binary -j 8 $rule.Pattern $path 2>$null
         
         foreach ($file in $output) {
             if (-not (Test-Path $file)) { continue }
+            if ($file -notmatch '\.exe$') { continue }
+            
             $fi = [System.IO.FileInfo]::new($file)
             
             if ($fi.Length -lt $rule.MinSize -or $fi.Length -gt $rule.MaxSize) { continue }
@@ -96,7 +94,6 @@ foreach ($path in $paths) {
 
 if ($results.Count -eq 0) { 
     Write-Host "`nNo matches!" -ForegroundColor Yellow
-    if (-not $FullScan) { Write-Host "Run with -FullScan for all drives" -ForegroundColor Gray }
 } else {
     Write-Host "`n=== $($results.Count) FOUND ===" -ForegroundColor Green
     $results | ForEach-Object { Write-Host "$($_.Name) | $($_.Path)" -ForegroundColor Cyan }
