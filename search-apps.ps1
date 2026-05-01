@@ -18,67 +18,86 @@ function Get-RipgrepPath {
 }
 
 function Install-Ripgrep {
+  Write-Host "Checking existing rg..." -ForegroundColor Gray
   $rg = Get-RipgrepPath
-  if ($rg) { Write-Host "Found: $rg" -ForegroundColor Green; return $true }
+  if ($rg) { 
+    Write-Host "Found: $rg" -ForegroundColor Green
+    return $true 
+  }
   
-  Write-Host "Installing Ripgrep..." -ForegroundColor Yellow
+  Write-Host "Starting install..." -ForegroundColor Yellow
   
-  $tempZip = "$env:TEMP\ripgrep.zip"
+  $tempZip = "$env:TEMP\rg_download.zip"
   $installDir = "$env:LOCALAPPDATA\Programs\ripgrep"
   
   try {
+    Write-Host "Step 1: Download..." -ForegroundColor Gray
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     
-    Write-Host "Downloading..." -ForegroundColor Gray
+    $ProgressPreference = 'SilentlyContinue'
     
-    $webClient = New-Object System.Net.WebClient
-    $webClient.Headers.Add("User-Agent", "Mozilla/5.0")
-    $webClient.DownloadFile("https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-pc-windows-msvc.zip", $tempZip)
+    $uri = "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-pc-windows-msvc.zip"
+    Invoke-WebRequest -Uri $uri -OutFile $tempZip -UseBasicParsing
     
-    Write-Host "Extracting..." -ForegroundColor Gray
+    Write-Host "Download complete. Size: $((Get-Item $tempZip).Length / 1MB) MB" -ForegroundColor Gray
     
-    if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
+    if (-not (Test-Path $installDir)) {
+      New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+    
+    Write-Host "Step 2: Extract..." -ForegroundColor Gray
     Expand-Archive -Path $tempZip -DestinationPath $installDir -Force
     
-    Write-Host "Finding rg.exe..." -ForegroundColor Gray
+    Write-Host "Step 3: Find rg.exe..." -ForegroundColor Gray
+    $extractedRg = Get-ChildItem -Path $installDir -Filter "rg.exe" -Recurse | Select-Object -First 1
     
-    $extractedRg = Get-ChildItem -Path $installDir -Filter "rg.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    Write-Host "Found: $($extractedRg.FullName)" -ForegroundColor Gray
     
     if ($extractedRg) {
-      Write-Host "Copying to $installDir" -ForegroundColor Gray
       Copy-Item $extractedRg.FullName -Destination "$installDir\rg.exe" -Force
       
       $env:PATH = "$installDir;$env:PATH"
       [System.Environment]::SetEnvironmentVariable("PATH", "$installDir;$env:PATH", "User")
       
-      Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
+      Remove-Item $tempZip -Force
       
-      Get-ChildItem -Path $installDir -Directory | ForEach-Object { 
-        if ($_.Name -ne "rg.exe") { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } 
-      }
+      Get-ChildItem -Path $installDir -Directory | Where-Object { $_.Name -ne "rg.exe" } | Remove-Item -Recurse -Force
       
-      Write-Host "Installed!" -ForegroundColor Green
+      $newRg = Get-RipgrepPath
+      Write-Host "SUCCESS! rg at: $newRg" -ForegroundColor Green
       return $true
     }
   } catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Stack: $($_.ScriptStackTrace)" -ForegroundColor Red
   }
+  
+  Write-Host "Install failed, trying winget..." -ForegroundColor Yellow
+  
+  try {
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c winget install BurntSushi.ripgrep --accept-package-agreements --accept-source-agreements" -Wait -NoNewWindow
+    $newRg = Get-RipgrepPath
+    if ($newRg) { return $true }
+  } catch {
+    Write-Host "winget error: $($_.Exception.Message)" -ForegroundColor Red
+  }
+  
   return $false
 }
 
-Write-Host "=== InstaFindCheats ===" -ForegroundColor Cyan
+Write-Host "`n=== InstaFindCheats ===" -ForegroundColor Cyan
+Write-Host "Starting..." -ForegroundColor Gray
 
-$installed = Install-Ripgrep
-$rgExe = Get-RipgrepPath
-
-if (-not $rgExe) {
-  Write-Host "`nFailed to install Ripgrep." -ForegroundColor Red
-  Write-Host "Manual instructions:" -ForegroundColor Yellow
-  Write-Host "  1. Open PowerShell as Admin" -ForegroundColor White
-  Write-Host "  2. Run: winget install BurntSushi.ripgrep" -ForegroundColor White
-  Write-Host "  3. Restart PowerShell" -ForegroundColor White
+if (-not (Install-Ripgrep)) {
+  Write-Host "`n=== MANUAL INSTALL REQUIRED ===" -ForegroundColor Red
+  Write-Host "Please download manually from:" -ForegroundColor Yellow
+  Write-Host "https://github.com/BurntSushi/ripgrep/releases" -ForegroundColor White
+  Write-Host "Extract rg.exe and put in:" -ForegroundColor White
+  Write-Host "  %LOCALAPPDATA%\Programs\ripgrep\rg.exe" -ForegroundColor White
   exit 1
 }
+
+$rgExe = Get-RipgrepPath
 
 $Rules = @(
   @{ MinBytes = 9MB;  MaxBytes = 15MB; Pattern = 'Gentee Launcher' },
