@@ -28,24 +28,24 @@ if (-not $rgExe) {
 if (-not $rgExe) { Write-Host "Install manually: https://github.com/BurntSushi/ripgrep/releases"; exit 1 }
 
 $Rules = @(
-    @{ MinSize=9MB;  MaxSize=15MB;  Pattern='Gentee Launcher' },
-    @{ MinSize=9MB;  MaxSize=16MB;  Pattern='X PROGRAMM LTD1' },
-    @{ MinSize=16MB; MaxSize=24MB;  Pattern='7\+InZ\[\^0' },
-    @{ MinSize=10MB; MaxSize=24MB;  Pattern='t\$PfD\)t\$PL' },
-    @{ MinSize=4MB;  MaxSize=10MB;  Pattern='KDMapper' },
-    @{ MinSize=0.3MB; MaxSize=3MB;  Pattern='DragonBurn' },
-    @{ MinSize=2MB;  MaxSize=8MB;   Pattern='D:/Projects/touchskins' },
-    @{ MinSize=43MB; MaxSize=60MB;  Pattern='vac_module_ok' },
-    @{ MinSize=600MB; MaxSize=700MB; Pattern='SharkHack' },
-    @{ MinSize=20MB; MaxSize=24MB;  Pattern='l\|rlK!tT1p' },
-    @{ MinSize=15MB; MaxSize=24MB;  Pattern='MIDNIGHTLoader' },
-    @{ MinSize=10MB; MaxSize=16MB;  Pattern='&Lp6U&XM\}3ZQ\*\^\[Hp\)' },
-    @{ MinSize=2MB;  MaxSize=8MB;   Pattern='j_M6:F' },
-    @{ MinSize=100KB; MaxSize=400KB; Pattern='swiftsoft' },
-    @{ MinSize=20MB; MaxSize=24MB;  Pattern='exloader' },
-    @{ MinSize=13MB; MaxSize=23MB;  Pattern='ZI>vZ@y#O%~' },
-    @{ MinSize=200KB; MaxSize=400KB; Pattern='com.mvploader' },
-    @{ MinSize=3MB;  MaxSize=7MB;   Pattern='Wzo8f9:GPd_C\[' }
+    @{ MinSize=9000KB; MaxSize=15000KB; Pattern='Gentee Launcher'; Literal=$true },
+    @{ MinSize=9000KB; MaxSize=16000KB; Pattern='X PROGRAMM LTD1'; Literal=$true },
+    @{ MinSize=16000KB; MaxSize=24000KB; Pattern='7+InZ[^0">'; Literal=$true },
+    @{ MinSize=10000KB; MaxSize=24000KB; Pattern='t$PfD)t$PL'; Literal=$true },
+    @{ MinSize=4000KB; MaxSize=10000KB; Pattern='KDMapper'; Literal=$true },
+    @{ MinSize=300KB; MaxSize=3000KB; Pattern='DragonBurn'; Literal=$true },
+    @{ MinSize=2000KB; MaxSize=8000KB; Pattern='D:/Projects/touchskins'; Literal=$true },
+    @{ MinSize=43000KB; MaxSize=60000KB; Pattern='vac_module_ok'; Literal=$true },
+    @{ MinSize=600000KB; MaxSize=700000KB; Pattern='SharkHack'; Literal=$true },
+    @{ MinSize=20000KB; MaxSize=24000KB; Pattern='l|rlK!tT1p'; Literal=$true },
+    @{ MinSize=15000KB; MaxSize=24000KB; Pattern='MIDNIGHTLoader'; Literal=$true },
+    @{ MinSize=10000KB; MaxSize=16000KB; Pattern='&Lp6U&XM}3ZQ*^[Hp)'; Literal=$true },
+    @{ MinSize=2000KB; MaxSize=8000KB; Pattern='j_M6:F>'; Literal=$true },
+    @{ MinSize=100KB; MaxSize=400KB; Pattern='swiftsoft'; Literal=$true },
+    @{ MinSize=20000KB; MaxSize=24000KB; Pattern='exloader'; Literal=$true },
+    @{ MinSize=13000KB; MaxSize=23000KB; Pattern='ZI>vZ@y#O%~'; Literal=$true },
+    @{ MinSize=200KB; MaxSize=400KB; Pattern='com.mvploader'; Literal=$true },
+    @{ MinSize=3000KB; MaxSize=7000KB; Pattern='Wzo8f9:GPd_C['; Literal=$true }
 )
 
 $userProfile = $env:USERPROFILE
@@ -66,9 +66,13 @@ foreach ($path in $paths) {
     Write-Host "Scan: $path" -ForegroundColor Cyan
     
     foreach ($rule in $Rules) {
-        Write-Host "  Searching: $($rule.Pattern)" -ForegroundColor Gray
+        Write-Host "  Pattern: $($rule.Pattern)" -ForegroundColor Gray
         
-        $output = & $rgExe -l --binary -j 8 $rule.Pattern $path 2>$null
+        if ($rule.Literal) {
+            $output = & $rgExe -l -F --binary -j 8 $rule.Pattern $path 2>$null
+        } else {
+            $output = & $rgExe -l --binary -j 8 $rule.Pattern $path 2>$null
+        }
         
         foreach ($file in $output) {
             if (-not (Test-Path $file)) { continue }
