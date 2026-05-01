@@ -11,14 +11,9 @@ function Get-RipgrepPath {
     "$env:ProgramFiles(x86)\ripgrep\rg.exe",
     "$env:USERPROFILE\.cargo\bin\rg.exe"
   )
-  
-  foreach ($p in $rgPaths) {
-    if (Test-Path $p) { return $p }
-  }
-  
+  foreach ($p in $rgPaths) { if (Test-Path $p) { return $p } }
   $rg = Get-Command rg -ErrorAction SilentlyContinue
   if ($rg) { return $rg.Source }
-  
   return $null
 }
 
@@ -28,18 +23,15 @@ function Install-Ripgrep {
   
   Write-Host "Installing Ripgrep..." -ForegroundColor Yellow
   
-  $tempZip = [System.IO.Path]::GetTempFileName() + ".zip"
+  $tempZip = "$env:TEMP\ripgrep.zip"
   $installDir = "$env:LOCALAPPDATA\Programs\ripgrep"
   
   try {
-    $url = "https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-pc-windows-msvc.zip"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $wc = New-Object System.Net.WebClient
+    $wc.DownloadFile("https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep-14.1.0-x86_64-pc-windows-msvc.zip", $tempZip)
     
-    $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile($url, $tempZip)
-    
-    if (-not (Test-Path $installDir)) {
-      New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    }
+    if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
     
     Expand-Archive -Path $tempZip -DestinationPath $installDir -Force
     
@@ -47,41 +39,26 @@ function Install-Ripgrep {
     
     if ($extractedRg) {
       Copy-Item $extractedRg.FullName -Destination "$installDir\rg.exe" -Force
-      
       $env:PATH = "$installDir;$env:PATH"
       [System.Environment]::SetEnvironmentVariable("PATH", "$installDir;$env:PATH", "User")
-      
       Remove-Item $tempZip -Force -ErrorAction SilentlyContinue
-      
-      $subfolders = Get-ChildItem -Path $installDir -Directory
-      foreach ($sf in $subfolders) {
-        Remove-Item $sf.FullName -Recurse -Force -ErrorAction SilentlyContinue
-      }
-      
+      Get-ChildItem -Path $installDir -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
       return $true
     }
   } catch {
-    Write-Host "Download error: $_" -ForegroundColor Red
+    Write-Host "Error: $_" -ForegroundColor Red
   }
-  
   return $false
 }
 
 if (-not (Install-Ripgrep)) {
-  Write-Host "`nFailed to install Ripgrep automatically." -ForegroundColor Red
-  Write-Host "Please install manually:" -ForegroundColor Yellow
-  Write-Host "  1. Open PowerShell as Admin" -ForegroundColor White
-  Write-Host "  2. Run: winget install BurntSushi.ripgrep" -ForegroundColor White
-  Write-Host "  3. Restart PowerShell and run this script again" -ForegroundColor White
+  Write-Host "`nManual install:" -ForegroundColor Yellow
+  Write-Host "1. Download: https://github.com/BurntSushi/ripgrep/releases" -ForegroundColor White
+  Write-Host "2. Extract rg.exe to C:\Users\YOUR_USER\AppData\Local\Programs\ripgrep" -ForegroundColor White
   exit 1
 }
 
 $rgExe = Get-RipgrepPath
-if (-not $rgExe) {
-  Write-Host "Ripgrep not found after install!" -ForegroundColor Red
-  exit 1
-}
-
 $Rules = @(
   @{ MinBytes = 9MB;  MaxBytes = 15MB; Pattern = 'Gentee Launcher' },
   @{ MinBytes = 9MB;  MaxBytes = 16MB; Pattern = 'X PROGRAMM LTD1' },
@@ -106,38 +83,24 @@ $Rules = @(
 Write-Host "`n=== InstaFindCheats ===" -ForegroundColor Green
 
 $userProfile = $env:USERPROFILE
-
-if ($RootPath) {
-  $paths = @($RootPath)
-} else {
+if ($RootPath) { $paths = @($RootPath) } else {
   $paths = @("$userProfile\Downloads", "$userProfile\Desktop", "$userProfile\Documents")
   Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object { $paths += $_.Root }
 }
 
 $results = @()
-
 foreach ($path in $paths) {
   if (-not (Test-Path $path)) { continue }
   Write-Host "Scan: $path" -ForegroundColor Cyan
-  
   foreach ($rule in $Rules) {
     $output = & $rgExe -l --binary --max-count 1 -j 8 $rule.Pattern $path 2>$null
-    
     foreach ($file in $output) {
       if (-not (Test-Path $file)) { continue }
       if ($file -notmatch '\.exe$') { continue }
-      
       $fi = [System.IO.FileInfo]::new($file)
       $size = $fi.Length
-      
       if ($size -lt $rule.MinBytes -or $size -gt $rule.MaxBytes) { continue }
-      
-      $results += [PSCustomObject]@{
-        Name = $fi.Name
-        Path = $file
-        SizeMB = [math]::Round($size / 1MB, 2)
-        Rule = $rule.Pattern
-      }
+      $results += [PSCustomObject]@{ Name = $fi.Name; Path = $file; SizeMB = [math]::Round($size / 1MB, 2); Rule = $rule.Pattern }
       Write-Host "  [FOUND] $($fi.Name) ($([math]::Round($size / 1MB, 2)) MB)" -ForegroundColor Green
     }
   }
@@ -148,7 +111,6 @@ else {
   $results = $results | Sort-Object Path -Unique
   Write-Host "`n=== $($results.Count) FOUND ===" -ForegroundColor Green
   $results | ForEach-Object { Write-Host "$($_.Name) | $($_.Path) | $($_.SizeMB) MB" -ForegroundColor Cyan }
-  
   $ch = Read-Host "`n[A] Open | [E] Export | [Q]"
   if ($ch -eq "A") { $results | ForEach-Object { Start-Process "explorer.exe" -ArgumentPath "/select,`"$($_.Path)`"" } }
   if ($ch -eq "E") { $results | ForEach-Object { "$($_.Path) | $($_.SizeMB) MB" } | Out-File "$env:USERPROFILE\Desktop\found.txt" -Encoding UTF8 }
